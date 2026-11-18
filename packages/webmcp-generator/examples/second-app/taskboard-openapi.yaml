@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: TaskBoard
+  version: 0.1.0
+  description: A deliberately tiny second app used to prove the WebMCP generator works for any API, not just ROTT. The stub REST implementation lives in stub-api.mjs.
+paths:
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks
+      parameters:
+        - name: done
+          in: query
+          description: Filter by completion
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The task list
+    post:
+      operationId: createTask
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewTask'
+      responses:
+        '201':
+          description: Task created
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get one task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: One task
+        '404':
+          description: No such task
+    patch:
+      operationId: completeTask
+      summary: Mark a task done or not done
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                done:
+                  type: boolean
+              required:
+                - done
+      responses:
+        '200':
+          description: Task updated
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      x-webmcp-disabled: true
+      responses:
+        '204':
+          description: Task deleted
+components:
+  schemas:
+    NewTask:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Task title
+        due:
+          type: string
+          format: date
+      required:
+        - title
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        done:
+          type: boolean
+        due:
+          type: string
+          format: date
+      required:
+        - id
+        - title
+        - done
