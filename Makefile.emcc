@@ -1,0 +1,237 @@
+# SPDX-License-Identifier: MIT
+#
+# Emscripten build configuration for the ROTT Express engine.
+#
+# ASYNCIFY is enabled because the engine's main loop in src/rt_main.c is a
+# blocking `while (1)` loop inside main() and src/ must NOT be modified:
+# replacing it with emscripten_set_main_loop would require editing the
+# GPL engine. ASYNCIFY lets the UNMODIFIED loop yield to the browser event
+# loop instead. This is the deliberate deviation from repo AGENTS.md
+# Phase 3 step 3 (which says to replace the main loop); the lane task
+# instruction and the licensing boundary (never modify src/) win.
+#
+# LICENSING BOUNDARY:
+# This Makefile and its build configuration are MIT-licensed.
+# The resulting engine/WASM binary remains GPL-licensed.
+# This build does not modify src/ or its native Makefile.
+#
+# SAVE STORAGE CONTRACT (verified against src/dosutil.c setup_homedir):
+# the engine writes config/saves under $HOME/.rott/ (shareware) or
+# $HOME/.rott/darkwar/ (registered); in Emscripten HOME is /home/web_user.
+# web/rott-pre.js (passed via --pre-js below) mounts IDBFS at
+# /home/web_user/.rott and blocks main() on the initial FS.syncfs(true)
+# so CONFIG.ROT and save games are visible on boot; it also persists
+# back to IndexedDB every 30 s and on pagehide. app.js only loads the
+# module after a user gesture (WebAudio unlock) — it does NOT do the
+# IDBFS mount; the pre-js file owns that.
+#
+# REGISTERED DATA:
+# Registered DARKWAR data files are user-supplied and must NEVER be
+# committed to this repository. Override DATA_DIR and DATA_FILES when
+# building with registered game data.
+#
+# This is a single-threaded build. COOP/COEP headers are not required.
+
+EMCC ?= emcc
+PYTHON ?= python3
+
+SRC := src
+OUTDIR := build/wasm
+
+# Emscripten compatibility shims (MIT build config, outside src/).
+# compat/emscripten/execinfo.h stubs backtrace() for src/dosutil.c, which
+# the unmodified engine includes for crash reporting; Emscripten has no
+# execinfo.h. No engine file is touched — the shim is purely a build-time
+# include-path addition. Override COMPAT_DIR if the shims live elsewhere.
+COMPAT_DIR ?= compat/emscripten
+
+SHAREWARE ?= 1
+
+# Default game data directory.
+DATA_DIR ?= data/shareware
+
+# Default shareware data files.
+# Override DATA_FILES for registered DARKWAR data.
+DATA_FILES ?= \
+	HUNTBGIN.RTC \
+	HUNTBGIN.RTL \
+	HUNTBGIN.WAD \
+	DEMO1_3.DMO \
+	DEMO2_3.DMO \
+	DEMO3_3.DMO \
+	DEMO4_3.DMO \
+	REMOTE1.RTS
+
+# Engine object names from the native src/Makefile.
+ENGINE_OBJECTS := \
+	cin_actr \
+	cin_efct \
+	cin_evnt \
+	cin_glob \
+	cin_main \
+	cin_util \
+	dosutil \
+	engine \
+	isr \
+	modexlib \
+	rt_actor \
+	rt_battl \
+	rt_build \
+	rt_cfg \
+	rt_crc \
+	rt_com \
+	rt_debug \
+	rt_dmand \
+	rt_door \
+	rt_draw \
+	rt_floor \
+	rt_game \
+	rt_in \
+	rt_main \
+	rt_map \
+	rt_menu \
+	rt_msg \
+	rt_net \
+	rt_playr \
+	rt_rand \
+	rt_scale \
+	rt_sound \
+	rt_sqrt \
+	rt_stat \
+	rt_state \
+	rt_str \
+	rt_ted \
+	rt_util \
+	rt_view \
+	rt_vid \
+	rt_err \
+	scriplib \
+	w_wad \
+	watcom \
+	z_zone \
+	byteordr \
+	dukemusc \
+	winrott \
+	queue \
+	HashTable
+
+ENGINE_SOURCES := $(addprefix $(SRC)/,$(addsuffix .c,$(ENGINE_OBJECTS)))
+
+# Compile audiolib sources directly with Emscripten.
+# Do not invoke src/audiolib/Makefile: its native build targets gcc.
+AUDIOLIB_SOURCES := $(wildcard $(SRC)/audiolib/*.c)
+
+SOURCES := $(ENGINE_SOURCES) $(AUDIOLIB_SOURCES)
+
+# Version/license selection. Mirrors the native src/Makefile semantics:
+# -DSHAREWARE=<0|1> -DSUPERROTT=<0|1> -DSITELICENSE=<0|1>; all zero is the
+# commercial/registered build, SHAREWARE=1 is the shareware build.
+ifeq ($(SHAREWARE),1)
+VERSION_CPPFLAGS := -DSHAREWARE=1 -DSUPERROTT=0 -DSITELICENSE=0
+else
+VERSION_CPPFLAGS := -DSHAREWARE=0 -DSUPERROTT=$(SUPERROTT) -DSITELICENSE=$(SITELICENSE)
+endif
+SUPERROTT ?= 0
+SITELICENSE ?= 0
+
+CPPFLAGS := \
+	-I$(COMPAT_DIR) \
+	-I$(SRC) \
+	-I$(SRC)/audiolib \
+	-DUSE_SDL=1 \
+	-DPLATFORM_UNIX=1 \
+	-D_GNU_SOURCE \
+	$(VERSION_CPPFLAGS)
+
+CFLAGS := \
+	-O2 \
+	-std=c17 \
+	-Wall \
+	-Wextra
+
+LDFLAGS := \
+	-O2 \
+	-sUSE_SDL=2 \
+	-sUSE_SDL_MIXER=2 \
+	-sASYNCIFY=1 \
+	-sASYNCIFY_STACK_SIZE=65536 \
+	-sALLOW_MEMORY_GROWTH=1 \
+	-sINITIAL_MEMORY=256MB \
+	-sFORCE_FILESYSTEM=1 \
+	-sEXPORTED_RUNTIME_METHODS=FS,callMain \
+	-sENVIRONMENT=web \
+	-sMODULARIZE=0
+
+PREJS := web/rott-pre.js
+
+JS_OUTPUT := $(OUTDIR)/rott.js
+WASM_OUTPUT := $(OUTDIR)/rott.wasm
+DATA_OUTPUT := $(OUTDIR)/rott.data
+
+PRELOAD_FLAGS := $(foreach file,$(DATA_FILES),--preload-file $(DATA_DIR)/$(file)@/$(file))
+
+.PHONY: all clean run check validate-sources validate-data
+
+all: validate-sources validate-data $(JS_OUTPUT) $(WASM_OUTPUT) $(DATA_OUTPUT)
+
+# Ensure the output directory exists.
+$(OUTDIR):
+	mkdir -p $(OUTDIR)
+
+# Validate required sources and shareware data before building.
+validate-sources:
+	@for source in $(SOURCES); do \
+		if [ ! -f "$$source" ]; then \
+			echo "Missing source: $$source"; \
+			exit 1; \
+		fi; \
+	done
+
+validate-data:
+	@for file in $(DATA_FILES); do \
+		if [ ! -f "$(DATA_DIR)/$$file" ]; then \
+			echo "Missing game data: $(DATA_DIR)/$$file"; \
+			echo "Set DATA_DIR and DATA_FILES to the appropriate user-supplied data."; \
+			exit 1; \
+		fi; \
+	done
+
+# Compile and link all engine and audiolib sources directly.
+$(JS_OUTPUT): $(SOURCES) $(PREJS) $(COMPAT_DIR)/execinfo.h | $(OUTDIR)
+	$(EMCC) $(CPPFLAGS) $(CFLAGS) $(SOURCES) \
+		--pre-js $(PREJS) \
+		$(LDFLAGS) \
+		$(PRELOAD_FLAGS) \
+		-o $(JS_OUTPUT)
+
+# Emscripten generates these as side effects of the same link operation.
+$(WASM_OUTPUT) $(DATA_OUTPUT): $(JS_OUTPUT)
+	@test -f $@ || { \
+		echo "Expected Emscripten output missing: $@"; \
+		exit 1; \
+	}
+
+# Verify the Emscripten compiler is installed.
+check:
+	@command -v $(EMCC) >/dev/null 2>&1 || { \
+		echo "Error: Emscripten compiler '$(EMCC)' not found."; \
+		echo "Install and activate the Emscripten SDK."; \
+		exit 1; \
+	}
+	@echo "Emscripten compiler:"
+	@$(EMCC) --version
+
+# Remove only generated WebAssembly build artifacts.
+# Native src/ objects, libraries, and Makefiles are untouched.
+clean:
+	rm -rf $(OUTDIR)
+
+# Serve the demo shell and generated artifacts.
+# web/app.js loads the generated engine after a user gesture; web/rott-pre.js
+# (baked in via --pre-js) owns the IDBFS mount/sync before main() runs.
+#
+# No COOP/COEP headers are necessary for this single-threaded build.
+run: all
+	@echo "Serving ROTT demo at http://localhost:8000/"
+	@echo "Ensure web/app.js loads the generated engine and initializes IDBFS."
+	@$(PYTHON) -m http.server 8000 --directory .
