@@ -1,3 +1,15 @@
+NOTE: This MIT License applies only to new standalone work in this
+repository that is separate from the Rise of the Triad engine (for example
+the REST/WebSocket sidecar server, the WebMCP generator package, and the
+agent UI). The engine code forked from LTCHIPS/rottexpr remains under the
+GNU General Public License v2.0 - see COPYING.
+
+The GPL is copyleft: any work derived from the GPL-covered engine code -
+including modifications to the engine and new code linked into the same
+program or WASM module - must also be distributed under the GPL v2.0, not
+under this MIT License. This MIT License does not relicense any GPL-covered
+or GPL-derived code.
+
 MIT License
 
 Copyright (c) 2026 Jeremy Carter <jeremy@jeremycarter.ca>
