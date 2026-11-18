@@ -18,6 +18,56 @@ that is already done, and do not treat this file as a snapshot of the
 present. If the file is wrong about the current state, fix the file as part
 of your work.
 
+## Licensing boundary — keep new work MIT
+
+Every piece of work and every line of code you write in this repo MUST be
+free of GPL infection and MUST be MIT licensed. Before you write or commit
+anything, check it against the boundary below: if it touches, links to,
+derives from, or is compiled into GPL-covered code, do not write it that
+way — restructure it as separate MIT sidecar code. If it cannot be
+restructured that way, skip it, record the skip in the docs, and keep
+going on the next piece of work. Never pause for a decision.
+
+Structure everything as a sidecar so new work can be MIT:
+
+- MIT side (separate programs, MIT): `server/` (REST + WebSocket sidecar),
+  `packages/webmcp-generator/`, the agent launcher + chat UI, the match
+  runner, data-driven mods (`mods/`, JSON + WAD overlays), and the
+  hot-reloadable script layer (runs in the page's JS context, outside the
+  WASM module, drives the game through the bridge).
+- GPL side (stays GPL): ONLY the engine in `src/` and the WASM build of it.
+  Nothing else is GPL. In particular there is NO compiled-in bridge: no
+  `rott_bridge.c`, no `rott_control_*`, no engine modifications of any kind.
+- The bridge is a separate MIT program. It operates at the player layer,
+  not the engine-internals layer: it sees what a human player sees (the
+  screen and HUD) and does what a human player does (keyboard and mouse).
+  It talks to the game only through interfaces the game already has:
+  synthetic DOM input events into the canvas, canvas screenshots, the
+  game's own save files, its config files, its data files (WAD overlays,
+  demo files), and its existing network protocol for multiplayer.
+- The boundary is the game's own public surface: DOM events in, pixels and
+  files out, network protocol for peers. Never link new logic into the
+  engine, never compile sidecar code into the WASM module, never read the
+  WASM module's memory. If a feature needs engine internals, do without it
+  or find an existing game interface for it — do not add a hook to the
+  engine.
+- This boundary is a HARD RULE, not a guideline. If a feature cannot be
+  built without modifying the engine, linking code into it, or reading its
+  memory, do not build that version of it: build the closest achievable
+  version using only public interfaces (DOM events, pixels, files, network
+  protocol), record the limitation in the docs, and keep going. No agent
+  working in this repo may weaken this boundary.
+- Never write GPL code. Do not modify the engine in `src/` or any other
+  GPL-covered file, for any reason. All new code in this repo is MIT
+  sidecar code. If a feature cannot be built without writing GPL code,
+  skip it, record the skip in the docs, and keep going on the next piece
+  of work.
+- No legal guarantee is offered here: this design follows the GPL-2.0
+  Section 2 separate-works test (independent works distributed separately
+  are not covered by the license), but only a lawyer can give a legal
+  opinion. The commitment above is a process rule — the boundary is
+  enforced by design and by review, not by a legal promise.
+
 ## Your job
 
 Build all of the following, in order. Do not skip phases. Do not start a
@@ -37,9 +87,11 @@ each other on this ROTT version, using the WebMCP interface.
 
 ## Rules you must follow
 
-1. **Never push, open a PR, or merge without the user's explicit per-action
-   approval.** Batch your writes to minimize approval cards. Never push
-   unilaterally.
+1. **Batch your GitHub writes into as few commits as possible.** Work on
+   feature branches and open PRs — never push code directly to `master`
+   (docs the user asked for are the exception). Open the PR and keep going
+   on the next phase; do not wait for review. The user reviews and merges
+   on their own schedule.
 2. **Never claim a build or test passed unless you ran it and saw it pass.**
    CI is the verification gate. Say plainly what you could not check.
 3. **Work on feature branches and open PRs for review.** Keep `master`
@@ -120,9 +172,11 @@ Do this:
    `./emsdk activate latest`) **or** build in GitHub Actions CI with an
    emsdk setup action. Prefer CI for the canonical build so the VM doesn't
    depend on a local emsdk.
-2. Build with `-sUSE_SDL=2 -sUSE_SDL_MIXER=2` (Emscripten ships SDL2). Add
-   an emcc target to `src/Makefile` or a separate `Makefile.emcc`; keep the
-   native Makefile working.
+2. Build with `-sUSE_SDL=2 -sUSE_SDL_MIXER=2` (Emscripten ships SDL2). Put
+   the emcc build in a separate `Makefile.emcc` OUTSIDE `src/` — do not
+   modify the engine tree for the WASM build; keep the native Makefile
+   working. The build config is MIT; the compiled WASM binary is GPL
+   (it is the engine, compiled).
 3. Replace the blocking main loop with `emscripten_set_main_loop`.
 4. Ship game data with `--preload-file` (MEMFS) for the demo; persist
    saves/config in IDBFS. Audio goes through SDL_mixer → WebAudio.
@@ -139,9 +193,13 @@ level is playable with keyboard/mouse.
 Do this:
 
 1. Build a Node sidecar server (TypeScript, Node 26 via nvm) that owns game
-   control. Expose a control bridge from the WASM game: a small C API
-   compiled into the module (`rott_control_*` functions via Embind/cwrap)
-   plus a state-snapshot export.
+   control, and a page-side bridge (`bridge/`, plain JS, MIT) that is the
+   ONLY thing that touches the running game. The bridge operates at the
+   player layer: it injects input by dispatching synthetic keyboard/mouse
+   events to the canvas (Emscripten SDL picks them up exactly like a human
+   player's input), and it observes state from canvas screenshots, the HUD,
+   and the game's own save files. It never modifies the engine, never
+   compiles code into the WASM module, and never reads the module's memory.
 2. Implement every endpoint in the OpenAPI spec (`docs/openapi.yaml`),
    which is the source of truth — every endpoint in the spec, every spec
    endpoint implemented:
@@ -149,14 +207,20 @@ Do this:
    - Mods: load/unload data-driven mods (weapons, enemies, levels as JSON
      + WAD overlays).
    - Live recode: apply script-layer changes and hot-swap the WASM module
-     with state serialized and restored — no restart, no relaunch, no
-     recompile of the running game.
+     with state preserved through the game's own save files (save, swap the
+     module, load) — no restart, no relaunch, no recompile of the running
+     game, no engine modifications.
    - Gameplay driving: input injection, save/load, demo playback, and every
      feature the engine exposes.
-3. **Obey this hard limit:** C cannot be recompiled at runtime in the
+3. **Obey these hard limits:** C cannot be recompiled at runtime in the
    browser. "Live recode" means (a) data-driven mods hot-reloaded, (b) a
    hot-reloadable script layer for game logic, (c) WASM module hot-swap with
-   state preserved. Never claim runtime C recompilation.
+   state preserved through the game's own save files. Never claim runtime C
+   recompilation. And: the bridge sees what a human sees. There is no exact
+   live internal state (no memory reads, no engine hooks) — state comes
+   from the screen, the HUD, and save files. That is the price of a bridge
+   that is not GPL, and it is also the honest model: agents play the way a
+   human plays.
 
 Done means: the full game is drivable over REST while running unrestarted.
 
@@ -164,8 +228,9 @@ Done means: the full game is drivable over REST while running unrestarted.
 
 Do this:
 
-1. Extend the same sidecar server. Broadcast full state on subscribe and at
-   a fixed tick; push deltas whenever state changes.
+1. Extend the same sidecar server. Broadcast the full observable state
+   (screen, HUD, and save-file-derived state) on subscribe and at a fixed
+   tick; push deltas whenever it changes.
 2. Document the discoverable channels in `docs/websocket.md`:
    `game.state`, `game.events`, `game.deltas`, `game.chat`. Messages are
    JSON: `{type, seq, ts, payload}`.
@@ -227,14 +292,15 @@ recorded.
 ## Game data
 
 - The fork ships the engine only. Shareware data (`HUNTBGIN.*` + demo
-  files) is the path for a public playable demo. **Ask the user** whether to
-  ship it in-repo, fetch it at runtime, or keep it out entirely.
+  files) ships in-repo under `data/shareware/` so the demo works out of
+  the box — shareware was released for free distribution.
 - Registered data (`DARKWAR.*`) belongs to the user, never the repo.
 
-## Ask the user before deciding
+## Decisions — resolved defaults (do not ask; use these)
 
-- Shareware data source for the playable demo (ship, fetch at runtime, or
-  keep out)?
-- WASM build: local emsdk on the VM, CI-only, or both?
-- Default match format: Comm-bat deathmatch or score/time attack?
-- Any agents to support first (built-in list), or all-custom to start?
+- Shareware data: ship it in-repo under `data/shareware/`.
+- WASM build: both — CI builds on every push (canonical), local emsdk for
+  iteration.
+- Default match format: Comm-bat deathmatch first; score/time attack
+  second.
+- Agents: custom/local agents first, no built-in list to start.
