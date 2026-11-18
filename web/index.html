@@ -1,0 +1,91 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- ROTT WASM demo page shell (MIT). The engine it loads is GPL-2.0; this
+     shell is a separate MIT program that only loads the module and talks to
+     it through the DOM (canvas, input events, screenshots) — see
+     BRIDGE-CONTRACT.md. Shareware episode "The HUNT Begins" only; registered
+     DARKWAR data is never shipped with this page. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROTT — Rise of the Triad (WASM demo)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0b0b0f; color: #e8e8ec;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 16px;
+  }
+  h1 { font-size: 1.4rem; margin: 8px 0 4px; }
+  p.sub { color: #9a9aad; margin: 0 0 12px; }
+  #stage { position: relative; width: min(96vw, 960px); aspect-ratio: 8 / 5; }
+  #rott-canvas {
+    width: 100%; height: 100%; display: block; background: #000;
+    image-rendering: pixelated; outline: none; cursor: crosshair;
+  }
+  #rott-canvas:focus { box-shadow: 0 0 0 2px #c33; }
+  #start-overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    background: rgba(0, 0, 0, 0.72); text-align: center; padding: 16px;
+  }
+  #start-overlay[hidden] { display: none; }
+  #start-btn {
+    font-size: 1.2rem; padding: 12px 28px; cursor: pointer;
+    background: #c33; color: #fff; border: 0; border-radius: 6px;
+  }
+  #start-btn:hover { background: #e04444; }
+  #rott-status {
+    width: min(96vw, 960px); margin-top: 10px; font-family: ui-monospace, monospace;
+    font-size: 0.85rem; color: #9a9aad; white-space: pre-wrap; word-break: break-word;
+  }
+  #help {
+    width: min(96vw, 960px); margin-top: 12px; font-size: 0.9rem;
+    color: #b9b9c6; line-height: 1.5;
+  }
+  #help kbd {
+    background: #22222c; border: 1px solid #444; border-radius: 4px;
+    padding: 0 5px; font-family: ui-monospace, monospace;
+  }
+  footer {
+    margin-top: auto; padding-top: 24px; font-size: 0.8rem; color: #77778a;
+    text-align: center; max-width: 960px;
+  }
+</style>
+</head>
+<body>
+  <h1>Rise of the Triad — WASM demo</h1>
+  <p class="sub">Shareware episode &ldquo;The HUNT Begins&rdquo;, running in your browser</p>
+
+  <div id="stage">
+    <canvas id="rott-canvas" width="640" height="400" tabindex="0"></canvas>
+    <div id="start-overlay">
+      <div>Click Start to load the game.<br>
+      Audio starts only after this click (browser autoplay policy).</div>
+      <button id="start-btn" type="button">Start game</button>
+    </div>
+  </div>
+
+  <div id="rott-status">Idle. Press Start to load the game.</div>
+
+  <div id="help">
+    <strong>Controls:</strong> <kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> move/turn,
+    <kbd>Ctrl</kbd> fire, <kbd>Space</kbd> use/open, <kbd>Shift</kbd> run,
+    <kbd>1</kbd>&ndash;<kbd>9</kbd> weapons, <kbd>Esc</kbd> menu / release mouse.
+    Click the canvas to capture the mouse for turning; press <kbd>Esc</kbd> to release it.
+    Saves and settings are stored in your browser (IndexedDB) and survive reloads.
+  </div>
+
+  <footer>
+    Engine: ROTT Express (GPL-2.0, fork of LTCHIPS/rottexpr). This page shell,
+    the WASM build config and the bridge contract are MIT. No registered
+    DARKWAR game data is shipped here — shareware data only. See BRIDGE-CONTRACT.md
+    for the DOM interface agents use to play.
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
